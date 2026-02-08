@@ -1,4 +1,5 @@
 const FEATHERLESS_API_KEY = import.meta.env.VITE_FEATHERLESS_API_KEY
+const K2_API_KEY = import.meta.env.VITE_K2_API_KEY
 
 // Ensemble of judges with different models and personalities
 const JUDGES = [
@@ -7,6 +8,7 @@ const JUDGES = [
     name: 'OG Mike',
     emoji: '🎤',
     model: 'deepseek-ai/DeepSeek-V3-0324',
+    provider: 'featherless',
     personality: `You are OG Mike, a veteran battle rap judge from the 90s hip-hop scene. 
 You value old-school lyricism, complex rhyme schemes, and raw authenticity. 
 You're tough but fair, and you appreciate bars that would make Rakim proud.
@@ -17,6 +19,7 @@ Speak in a direct, street-wise voice.`,
     name: 'DJ Neural',
     emoji: '🤖',
     model: 'meta-llama/Llama-3.3-70B-Instruct',
+    provider: 'featherless',
     personality: `You are DJ Neural, a modern hip-hop analyst who breaks down rap technically.
 You focus on syllable patterns, internal rhymes, flow switches, and delivery precision.
 You appreciate innovative wordplay and technical mastery.
@@ -27,10 +30,22 @@ Speak analytically but with hip-hop flair.`,
     name: 'Queen Bars',
     emoji: '👑',
     model: 'Qwen/Qwen2.5-72B-Instruct',
+    provider: 'featherless',
     personality: `You are Queen Bars, a fierce battle rap queen who's seen thousands of battles.
 You value confidence, stage presence, crowd engagement, and memorable punchlines.
 You know what makes the crowd go "OHHH!" and judge accordingly.
 Speak with sass and authority.`,
+  },
+  {
+    id: 'k2',
+    name: 'K2 Think',
+    emoji: '🧠',
+    model: 'MBZUAI-IFM/K2-Think-v2',
+    provider: 'k2',
+    personality: `You are K2 Think, an AI reasoning expert who deeply analyzes rap performances.
+You examine logical flow of verses, coherence of themes, and intellectual depth.
+You appreciate clever wordplay and well-constructed arguments in bars.
+Speak thoughtfully but with respect for the art form.`,
   },
 ]
 
@@ -58,24 +73,43 @@ Respond in this EXACT JSON format only:
   "improve": ["<specific tip 1>", "<specific tip 2>", "<specific tip 3>"]
 }`
 
-async function callFeatherless(model, messages) {
-  const response = await fetch('https://api.featherless.ai/v1/chat/completions', {
+async function callAPI(provider, model, messages) {
+  const config = {
+    featherless: {
+      url: 'https://api.featherless.ai/v1/chat/completions',
+      apiKey: FEATHERLESS_API_KEY,
+    },
+    k2: {
+      url: 'https://api.k2think.ai/v1/chat/completions',
+      apiKey: K2_API_KEY,
+    },
+  }
+
+  const { url, apiKey } = config[provider]
+  
+  if (!apiKey) {
+    throw new Error(`Missing API key for ${provider}`)
+  }
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${FEATHERLESS_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
+      'accept': 'application/json',
     },
     body: JSON.stringify({
       model,
       messages,
       max_tokens: 500,
       temperature: 0.7,
+      stream: false,
     }),
   })
 
   if (!response.ok) {
     const error = await response.text()
-    console.error(`Featherless API error (${model}):`, error)
+    console.error(`${provider} API error (${model}):`, error)
     throw new Error(`Judge unavailable`)
   }
 
@@ -100,6 +134,11 @@ function getDefaultVerdict(judgeId, score) {
       high: "Honey, you ATE that! The crowd would go crazy!",
       mid: "Cute bars, but I've seen better. Step it up!",
       low: "Baby, we need to talk about your delivery...",
+    },
+    k2: {
+      high: "Logically sound structure with excellent thematic coherence!",
+      mid: "Reasonable performance. Consider deeper conceptual layering.",
+      low: "The reasoning chain needs work. Focus on narrative flow.",
     },
   }
   
@@ -143,9 +182,9 @@ export async function getJudgePanel(transcript) {
   
   const judgePromises = JUDGES.map(async (judge) => {
     try {
-      console.log(`${judge.emoji} ${judge.name} is judging with ${judge.model}...`)
+      console.log(`${judge.emoji} ${judge.name} is judging with ${judge.model} (${judge.provider})...`)
       
-      const content = await callFeatherless(judge.model, [
+      const content = await callAPI(judge.provider, judge.model, [
         { role: 'system', content: judge.personality + '\n\n' + GRADE_PROMPT },
         { role: 'user', content: `Grade this performance:\n\n"${transcript}"` },
       ])

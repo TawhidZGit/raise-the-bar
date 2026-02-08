@@ -247,9 +247,9 @@ function App() {
         {grading && (
           <div className="judge-panel grading">
             <div className="grading-animation">
-              <span>🎤</span><span>🤖</span><span>👑</span>
+              <span>🎤</span><span>🤖</span><span>👑</span><span>🧠</span>
             </div>
-            <p>The judge panel is deliberating...</p>
+            <p>The 4-judge panel is deliberating...</p>
           </div>
         )}
 
@@ -387,21 +387,28 @@ function App() {
               <div className="info-icon">🎤</div>
               <div className="info-content">
                 <h4>OG Mike</h4>
-                <p>DeepSeek V3 • Old School Judge</p>
+                <p>DeepSeek V3 • Old School</p>
               </div>
             </div>
             <div className="info-card">
               <div className="info-icon">🤖</div>
               <div className="info-content">
                 <h4>DJ Neural</h4>
-                <p>Llama 3.3 70B • Technical Analyst</p>
+                <p>Llama 3.3 70B • Technical</p>
               </div>
             </div>
             <div className="info-card">
               <div className="info-icon">👑</div>
               <div className="info-content">
                 <h4>Queen Bars</h4>
-                <p>Qwen 2.5 72B • Battle Veteran</p>
+                <p>Qwen 2.5 72B • Street</p>
+              </div>
+            </div>
+            <div className="info-card">
+              <div className="info-icon">🧠</div>
+              <div className="info-content">
+                <h4>K2 Think</h4>
+                <p>K2-Think-v2 • Reasoning</p>
               </div>
             </div>
           </div>
