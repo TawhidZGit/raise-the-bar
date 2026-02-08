@@ -40,6 +40,8 @@ body {
   flex-direction: column;
   position: relative;
   overflow-x: hidden;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .background-gradient {
@@ -54,6 +56,8 @@ body {
     radial-gradient(ellipse 40% 30% at 10% 80%, rgba(100, 0, 200, 0.08), transparent);
   pointer-events: none;
   z-index: 0;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .noise-overlay {
@@ -66,6 +70,8 @@ body {
   opacity: 0.03;
   pointer-events: none;
   z-index: 1;
+  transform: translateZ(0);
+  will-change: auto;
 }
 
 .header {
@@ -419,6 +425,8 @@ body {
   overflow-y: auto;
   font-size: 1.1rem;
   line-height: 1.8;
+  contain: content;
+  transform: translateZ(0);
 }
 
 .transcript-content::-webkit-scrollbar {
@@ -441,12 +449,6 @@ body {
 .partial-text {
   color: var(--accent-primary);
   opacity: 0.8;
-  animation: partial-fade 0.5s ease;
-}
-
-@keyframes partial-fade {
-  from { opacity: 0.4; }
-  to { opacity: 0.8; }
 }
 
 .placeholder-text {
