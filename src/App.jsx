@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useScribe } from '@elevenlabs/react'
+import { saveTranscript } from './supabase'
 import './App.css'
 
 const API_KEY = import.meta.env.VITE_ELEVEN_LABS_API_KEY
@@ -8,6 +9,8 @@ function App() {
   const [transcript, setTranscript] = useState('')
   const [partialTranscript, setPartialTranscript] = useState('')
   const [error, setError] = useState(null)
+  const [savedTranscripts, setSavedTranscripts] = useState([])
+  const [saving, setSaving] = useState(false)
 
   // Use the official ElevenLabs Scribe hook
   const scribe = useScribe({
@@ -22,7 +25,6 @@ function App() {
       console.error('Scribe error:', err)
       setError(err.message || 'Connection error')
     },
-    // Try different callback names
     onTranscript: (data) => {
       console.log('onTranscript:', data)
     },
@@ -41,22 +43,12 @@ function App() {
     },
   })
 
-  // Log all scribe state changes
+  // Sync with scribe's built-in transcript
   useEffect(() => {
-    console.log('Scribe state:', {
-      status: scribe.status,
-      transcript: scribe.transcript,
-      partialTranscript: scribe.partialTranscript,
-    })
-    
-    // Use scribe's built-in transcript if available
-    if (scribe.transcript) {
-      setTranscript(scribe.transcript)
-    }
     if (scribe.partialTranscript) {
       setPartialTranscript(scribe.partialTranscript)
     }
-  }, [scribe.status, scribe.transcript, scribe.partialTranscript])
+  }, [scribe.partialTranscript])
 
   // Get token from ElevenLabs API
   const getToken = async () => {
@@ -83,6 +75,10 @@ function App() {
 
     try {
       setError(null)
+      // Clear previous transcript when starting new recording
+      setTranscript('')
+      setPartialTranscript('')
+      
       console.log('Getting token...')
       const token = await getToken()
       console.log('Got token, connecting...')
@@ -103,10 +99,30 @@ function App() {
     }
   }
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     console.log('Stopping recording...')
     scribe.disconnect()
+    
+    // Get the final transcript (combine partial if any)
+    const finalText = (transcript + ' ' + partialTranscript).trim()
     setPartialTranscript('')
+    
+    if (finalText) {
+      setTranscript(finalText)
+      
+      // Save to Supabase
+      setSaving(true)
+      try {
+        const saved = await saveTranscript(finalText)
+        console.log('Saved to Supabase:', saved)
+        setSavedTranscripts(prev => [saved[0], ...prev])
+      } catch (err) {
+        console.error('Failed to save:', err)
+        setError('Failed to save transcript: ' + err.message)
+      } finally {
+        setSaving(false)
+      }
+    }
   }
 
   const clearTranscript = () => {
@@ -121,8 +137,7 @@ function App() {
   const isRecording = scribe.status === 'connected' || scribe.status === 'transcribing'
   const isConnecting = scribe.status === 'connecting'
 
-  // Use SDK's transcript values as fallback
-  const displayTranscript = transcript || scribe.transcript || ''
+  const displayTranscript = transcript || ''
   const displayPartial = partialTranscript || scribe.partialTranscript || ''
 
   return (
@@ -135,7 +150,9 @@ function App() {
           <span className="title-icon">◉</span>
           Voice Scribe
         </h1>
-        <span className="status-badge">{scribe.status}</span>
+        <span className="status-badge">
+          {saving ? 'saving...' : scribe.status}
+        </span>
       </header>
 
       <main className="main">
@@ -143,7 +160,7 @@ function App() {
           <button 
             className={`mic-button ${isRecording ? 'recording' : ''} ${isConnecting ? 'connecting' : ''}`}
             onClick={isRecording ? stopRecording : startRecording}
-            disabled={isConnecting}
+            disabled={isConnecting || saving}
           >
             <div className="mic-pulse"></div>
             <div className="mic-pulse delay-1"></div>
@@ -162,8 +179,9 @@ function App() {
           </button>
           <p className="status-text">
             {isConnecting && 'Connecting...'}
-            {isRecording && 'Listening... (speak now)'}
-            {scribe.status === 'disconnected' && 'Click to start'}
+            {isRecording && 'Listening... (click to stop & save)'}
+            {saving && 'Saving to database...'}
+            {!isConnecting && !isRecording && !saving && 'Click to start'}
           </p>
         </div>
 
@@ -215,6 +233,20 @@ function App() {
           </div>
         </div>
 
+        {savedTranscripts.length > 0 && (
+          <div className="saved-section">
+            <h3>Recently Saved</h3>
+            <div className="saved-list">
+              {savedTranscripts.slice(0, 3).map((t, i) => (
+                <div key={t.id || i} className="saved-item">
+                  <span className="saved-text">{t.text.substring(0, 100)}{t.text.length > 100 ? '...' : ''}</span>
+                  <span className="saved-time">{new Date(t.created_at).toLocaleTimeString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="info-cards">
           <div className="info-card">
             <div className="info-icon">⚡</div>
@@ -231,17 +263,17 @@ function App() {
             </div>
           </div>
           <div className="info-card">
-            <div className="info-icon">🎯</div>
+            <div className="info-icon">💾</div>
             <div className="info-content">
-              <h4>Word-level Accuracy</h4>
-              <p>Precise timestamps for every word</p>
+              <h4>Auto-Save</h4>
+              <p>Transcripts saved to Supabase</p>
             </div>
           </div>
         </div>
       </main>
 
       <footer className="footer">
-        <p>Powered by <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer">ElevenLabs</a> Scribe v2 Realtime</p>
+        <p>Powered by <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer">ElevenLabs</a> & <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">Supabase</a></p>
       </footer>
     </div>
   )
