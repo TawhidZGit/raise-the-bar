@@ -9,7 +9,8 @@ const JUDGES = [
     model: 'deepseek-ai/DeepSeek-V3-0324',
     personality: `You are OG Mike, a veteran battle rap judge from the 90s hip-hop scene. 
 You value old-school lyricism, complex rhyme schemes, and raw authenticity. 
-You're tough but fair, and you appreciate bars that would make Rakim proud.`,
+You're tough but fair, and you appreciate bars that would make Rakim proud.
+Speak in a direct, street-wise voice.`,
   },
   {
     id: 'tech',
@@ -18,7 +19,8 @@ You're tough but fair, and you appreciate bars that would make Rakim proud.`,
     model: 'meta-llama/Llama-3.3-70B-Instruct',
     personality: `You are DJ Neural, a modern hip-hop analyst who breaks down rap technically.
 You focus on syllable patterns, internal rhymes, flow switches, and delivery precision.
-You appreciate innovative wordplay and technical mastery.`,
+You appreciate innovative wordplay and technical mastery.
+Speak analytically but with hip-hop flair.`,
   },
   {
     id: 'street',
@@ -27,20 +29,34 @@ You appreciate innovative wordplay and technical mastery.`,
     model: 'Qwen/Qwen2.5-72B-Instruct',
     personality: `You are Queen Bars, a fierce battle rap queen who's seen thousands of battles.
 You value confidence, stage presence, crowd engagement, and memorable punchlines.
-You know what makes the crowd go "OHHH!" and judge accordingly.`,
+You know what makes the crowd go "OHHH!" and judge accordingly.
+Speak with sass and authority.`,
   },
 ]
 
-const GRADE_PROMPT = `Grade this rap battle performance on a scale of 1-10.
+const GRADE_PROMPT = `Grade this rap battle performance. Be specific and constructive.
 
-Evaluate:
-- Flow & Rhythm (smoothness, timing)
-- Wordplay & Punchlines (cleverness, impact)
-- Delivery & Confidence
-- Creativity & Originality
+Evaluate these categories (1-10 each):
+- FLOW: rhythm, timing, breath control, cadence
+- LYRICS: wordplay, vocabulary, metaphors, punchlines  
+- DELIVERY: confidence, energy, presence
+- CREATIVITY: originality, unique style, memorable lines
+- TECHNIQUE: rhyme schemes, internal rhymes, multisyllabics
 
-Respond in this EXACT JSON format only, no other text:
-{"score": <number 1-10>, "comment": "<one punchy sentence in your character's voice>"}`
+Respond in this EXACT JSON format only:
+{
+  "scores": {
+    "flow": <1-10>,
+    "lyrics": <1-10>,
+    "delivery": <1-10>,
+    "creativity": <1-10>,
+    "technique": <1-10>
+  },
+  "overall": <1-10>,
+  "verdict": "<one punchy sentence in your character's voice>",
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "improve": ["<specific tip 1>", "<specific tip 2>", "<specific tip 3>"]
+}`
 
 async function callFeatherless(model, messages) {
   const response = await fetch('https://api.featherless.ai/v1/chat/completions', {
@@ -52,7 +68,7 @@ async function callFeatherless(model, messages) {
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: 150,
+      max_tokens: 500,
       temperature: 0.7,
     }),
   })
@@ -73,14 +89,29 @@ function parseJudgeResponse(content) {
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0])
       return {
-        score: Math.min(10, Math.max(1, Number(parsed.score) || 5)),
-        comment: parsed.comment || 'No comment.',
+        scores: {
+          flow: Math.min(10, Math.max(1, Number(parsed.scores?.flow) || 5)),
+          lyrics: Math.min(10, Math.max(1, Number(parsed.scores?.lyrics) || 5)),
+          delivery: Math.min(10, Math.max(1, Number(parsed.scores?.delivery) || 5)),
+          creativity: Math.min(10, Math.max(1, Number(parsed.scores?.creativity) || 5)),
+          technique: Math.min(10, Math.max(1, Number(parsed.scores?.technique) || 5)),
+        },
+        overall: Math.min(10, Math.max(1, Number(parsed.overall) || 5)),
+        verdict: parsed.verdict || 'No comment.',
+        strengths: parsed.strengths || [],
+        improve: parsed.improve || [],
       }
     }
   } catch (e) {
-    console.error('Parse error:', e)
+    console.error('Parse error:', e, content)
   }
-  return { score: 5, comment: content.slice(0, 100) }
+  return { 
+    scores: { flow: 5, lyrics: 5, delivery: 5, creativity: 5, technique: 5 },
+    overall: 5, 
+    verdict: content.slice(0, 100),
+    strengths: [],
+    improve: [],
+  }
 }
 
 export async function getJudgePanel(transcript) {
@@ -96,20 +127,22 @@ export async function getJudgePanel(transcript) {
       ])
       
       const result = parseJudgeResponse(content)
-      console.log(`${judge.emoji} ${judge.name}: ${result.score}/10`)
+      console.log(`${judge.emoji} ${judge.name}: ${result.overall}/10`)
       
       return {
         ...judge,
-        score: result.score,
-        comment: result.comment,
+        ...result,
         success: true,
       }
     } catch (error) {
       console.error(`${judge.name} failed:`, error)
       return {
         ...judge,
-        score: null,
-        comment: 'Judge unavailable',
+        scores: { flow: 0, lyrics: 0, delivery: 0, creativity: 0, technique: 0 },
+        overall: null,
+        verdict: 'Judge unavailable',
+        strengths: [],
+        improve: [],
         success: false,
       }
     }
@@ -118,32 +151,61 @@ export async function getJudgePanel(transcript) {
   const results = await Promise.allSettled(judgePromises)
   const judges = results.map(r => r.status === 'fulfilled' ? r.value : { ...JUDGES[0], success: false })
   
-  // Calculate average from successful judges
-  const successfulJudges = judges.filter(j => j.success && j.score !== null)
+  // Calculate averages from successful judges
+  const successfulJudges = judges.filter(j => j.success && j.overall !== null)
+  
+  const avgScores = {
+    flow: 0, lyrics: 0, delivery: 0, creativity: 0, technique: 0
+  }
+  
+  if (successfulJudges.length > 0) {
+    for (const category of Object.keys(avgScores)) {
+      avgScores[category] = Math.round(
+        (successfulJudges.reduce((sum, j) => sum + j.scores[category], 0) / successfulJudges.length) * 10
+      ) / 10
+    }
+  }
+
   const avgScore = successfulJudges.length > 0
-    ? successfulJudges.reduce((sum, j) => sum + j.score, 0) / successfulJudges.length
+    ? successfulJudges.reduce((sum, j) => sum + j.overall, 0) / successfulJudges.length
     : 5
+
+  // Collect all unique improvement tips
+  const allImprovements = [...new Set(successfulJudges.flatMap(j => j.improve))].slice(0, 5)
+  const allStrengths = [...new Set(successfulJudges.flatMap(j => j.strengths))].slice(0, 4)
 
   // Determine grade letter
   const gradeLetter = 
-    avgScore >= 9.5 ? 'A+' :
-    avgScore >= 9 ? 'A' :
-    avgScore >= 8.5 ? 'A-' :
-    avgScore >= 8 ? 'B+' :
-    avgScore >= 7.5 ? 'B' :
-    avgScore >= 7 ? 'B-' :
-    avgScore >= 6.5 ? 'C+' :
-    avgScore >= 6 ? 'C' :
-    avgScore >= 5.5 ? 'C-' :
-    avgScore >= 5 ? 'D+' :
+    avgScore >= 9.5 ? 'S' :
+    avgScore >= 9 ? 'A+' :
+    avgScore >= 8.5 ? 'A' :
+    avgScore >= 8 ? 'A-' :
+    avgScore >= 7.5 ? 'B+' :
+    avgScore >= 7 ? 'B' :
+    avgScore >= 6.5 ? 'B-' :
+    avgScore >= 6 ? 'C+' :
+    avgScore >= 5.5 ? 'C' :
+    avgScore >= 5 ? 'C-' :
     avgScore >= 4 ? 'D' : 'F'
+
+  // Generate verdict message
+  const verdictMessage = 
+    avgScore >= 9 ? "🔥 LEGENDARY BARS! You bodied this!" :
+    avgScore >= 8 ? "💪 Solid performance! You got skills!" :
+    avgScore >= 7 ? "✨ Good flow! Keep grinding!" :
+    avgScore >= 6 ? "👊 Decent bars. Room to grow!" :
+    avgScore >= 5 ? "📝 Keep practicing, you'll get there!" :
+    "💡 Study the greats and come back stronger!"
 
   return {
     judges,
     avgScore: Math.round(avgScore * 10) / 10,
+    avgScores,
     gradeLetter,
+    verdictMessage,
+    strengths: allStrengths,
+    improvements: allImprovements,
   }
 }
 
 export { JUDGES }
-

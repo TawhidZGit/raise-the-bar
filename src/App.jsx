@@ -101,6 +101,7 @@ function App() {
       try {
         const saved = await saveTranscript(finalText)
         savedRecord = saved[0]
+        console.log('Saved to Supabase:', saved)
       } catch (err) {
         console.error('Failed to save:', err)
         setError('Failed to save')
@@ -121,7 +122,7 @@ function App() {
           const gradeStr = `${results.gradeLetter} (${results.avgScore}/10)`
           const feedback = results.judges
             .filter(j => j.success)
-            .map(j => `${j.emoji} ${j.name}: ${j.comment}`)
+            .map(j => `${j.emoji} ${j.name}: ${j.verdict}`)
             .join(' | ')
           
           await updateTranscriptGrade(savedRecord.id, gradeStr, feedback)
@@ -132,7 +133,7 @@ function App() {
         setSavedTranscripts(prev => [savedRecord, ...prev])
       } catch (err) {
         console.error('Failed to grade:', err)
-        setError('Judges unavailable')
+        setError('Judges unavailable - check API key')
         setSavedTranscripts(prev => [savedRecord, ...prev])
       } finally {
         setGrading(false)
@@ -157,6 +158,14 @@ function App() {
   const displayTranscript = transcript || ''
   const displayPartial = partialTranscript || scribe.partialTranscript || ''
 
+  const categoryLabels = {
+    flow: '🌊 Flow',
+    lyrics: '✍️ Lyrics', 
+    delivery: '🎭 Delivery',
+    creativity: '💡 Creativity',
+    technique: '🔧 Technique',
+  }
+
   return (
     <div className="app">
       <div className="background-gradient"></div>
@@ -165,10 +174,10 @@ function App() {
       <header className="header">
         <h1 className="title">
           <span className="title-icon">🎤</span>
-          Rap Battle Arena
+          Raise The Bar
         </h1>
         <span className="status-badge">
-          {grading ? '⚖️ judging' : saving ? '💾' : scribe.status}
+          {grading ? '⚖️ judging' : saving ? '💾 saving' : scribe.status}
         </span>
       </header>
 
@@ -234,35 +243,7 @@ function App() {
           </div>
         </div>
 
-        {/* Judge Panel Results */}
-        {judgeResults && (
-          <div className="judge-panel">
-            <div className="panel-header">
-              <div className="final-score">
-                <span className="score-letter">{judgeResults.gradeLetter}</span>
-                <span className="score-number">{judgeResults.avgScore}/10</span>
-              </div>
-              <h3>Judge Panel Verdict</h3>
-            </div>
-            
-            <div className="judges-grid">
-              {judgeResults.judges.map((judge) => (
-                <div key={judge.id} className={`judge-card ${judge.success ? '' : 'unavailable'}`}>
-                  <div className="judge-header">
-                    <span className="judge-emoji">{judge.emoji}</span>
-                    <span className="judge-name">{judge.name}</span>
-                    {judge.success && (
-                      <span className="judge-score">{judge.score}/10</span>
-                    )}
-                  </div>
-                  <p className="judge-comment">{judge.comment}</p>
-                  <span className="judge-model">{judge.model.split('/')[1]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* Grading Animation */}
         {grading && (
           <div className="judge-panel grading">
             <div className="grading-animation">
@@ -272,7 +253,116 @@ function App() {
           </div>
         )}
 
-        {savedTranscripts.length > 0 && (
+        {/* Judge Panel Results */}
+        {judgeResults && (
+          <div className="results-container">
+            {/* Main Score Card */}
+            <div className="main-score-card">
+              <div className="score-circle">
+                <span className="grade-letter">{judgeResults.gradeLetter}</span>
+                <span className="grade-number">{judgeResults.avgScore}/10</span>
+              </div>
+              <div className="score-info">
+                <h2>Ensemble Verdict</h2>
+                <p className="verdict-message">{judgeResults.verdictMessage}</p>
+              </div>
+            </div>
+
+            {/* Category Breakdown */}
+            <div className="category-breakdown">
+              <h3>📊 Score Breakdown</h3>
+              <div className="category-bars">
+                {Object.entries(judgeResults.avgScores).map(([key, value]) => (
+                  <div key={key} className="category-row">
+                    <span className="category-label">{categoryLabels[key]}</span>
+                    <div className="category-bar-container">
+                      <div 
+                        className="category-bar-fill" 
+                        style={{ width: `${value * 10}%` }}
+                      />
+                    </div>
+                    <span className="category-value">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Individual Judges */}
+            <div className="judges-section">
+              <h3>🎤 Judge Panel</h3>
+              <div className="judges-grid">
+                {judgeResults.judges.map((judge) => (
+                  <div key={judge.id} className={`judge-card ${judge.success ? '' : 'unavailable'}`}>
+                    <div className="judge-card-header">
+                      <span className="judge-emoji">{judge.emoji}</span>
+                      <div className="judge-info">
+                        <span className="judge-name">{judge.name}</span>
+                        <span className="judge-model">{judge.model.split('/')[1]}</span>
+                      </div>
+                      {judge.success && (
+                        <span className="judge-overall">{judge.overall}/10</span>
+                      )}
+                    </div>
+                    
+                    {judge.success && (
+                      <>
+                        <p className="judge-verdict">"{judge.verdict}"</p>
+                        
+                        <div className="judge-scores">
+                          {Object.entries(judge.scores).map(([key, val]) => (
+                            <div key={key} className="mini-score">
+                              <span className="mini-label">{key.slice(0,3).toUpperCase()}</span>
+                              <span className="mini-value">{val}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {judge.strengths?.length > 0 && (
+                          <div className="judge-strengths">
+                            <span className="strength-label">💪 Strengths:</span>
+                            {judge.strengths.map((s, i) => (
+                              <span key={i} className="strength-tag">{s}</span>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Improvement Tips */}
+            {judgeResults.improvements?.length > 0 && (
+              <div className="improvements-section">
+                <h3>📈 Level Up Your Bars</h3>
+                <div className="improvements-list">
+                  {judgeResults.improvements.map((tip, i) => (
+                    <div key={i} className="improvement-item">
+                      <span className="improvement-number">{i + 1}</span>
+                      <span className="improvement-text">{tip}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Strengths Summary */}
+            {judgeResults.strengths?.length > 0 && (
+              <div className="strengths-section">
+                <h3>🔥 What You Did Right</h3>
+                <div className="strengths-list">
+                  {judgeResults.strengths.map((strength, i) => (
+                    <span key={i} className="strength-pill">✓ {strength}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Battle History */}
+        {savedTranscripts.length > 0 && !judgeResults && (
           <div className="saved-section">
             <h3>📜 Battle History</h3>
             <div className="saved-list">
@@ -290,29 +380,32 @@ function App() {
           </div>
         )}
 
-        <div className="info-cards">
-          <div className="info-card">
-            <div className="info-icon">🎤</div>
-            <div className="info-content">
-              <h4>OG Mike</h4>
-              <p>DeepSeek V3</p>
+        {/* Info Cards - Only show when no results */}
+        {!judgeResults && !grading && (
+          <div className="info-cards">
+            <div className="info-card">
+              <div className="info-icon">🎤</div>
+              <div className="info-content">
+                <h4>OG Mike</h4>
+                <p>DeepSeek V3 • Old School Judge</p>
+              </div>
+            </div>
+            <div className="info-card">
+              <div className="info-icon">🤖</div>
+              <div className="info-content">
+                <h4>DJ Neural</h4>
+                <p>Llama 3.3 70B • Technical Analyst</p>
+              </div>
+            </div>
+            <div className="info-card">
+              <div className="info-icon">👑</div>
+              <div className="info-content">
+                <h4>Queen Bars</h4>
+                <p>Qwen 2.5 72B • Battle Veteran</p>
+              </div>
             </div>
           </div>
-          <div className="info-card">
-            <div className="info-icon">🤖</div>
-            <div className="info-content">
-              <h4>DJ Neural</h4>
-              <p>Llama 3.3 70B</p>
-            </div>
-          </div>
-          <div className="info-card">
-            <div className="info-icon">👑</div>
-            <div className="info-content">
-              <h4>Queen Bars</h4>
-              <p>Qwen 2.5 72B</p>
-            </div>
-          </div>
-        </div>
+        )}
       </main>
 
       <footer className="footer">
