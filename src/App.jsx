@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useScribe } from '@elevenlabs/react'
 import { saveTranscript, updateTranscriptGrade } from './supabase'
-import { gradeRapBattle } from './k2'
+import { getJudgePanel } from './featherless'
 import './App.css'
 
 const API_KEY = import.meta.env.VITE_ELEVEN_LABS_API_KEY
@@ -13,14 +13,13 @@ function App() {
   const [savedTranscripts, setSavedTranscripts] = useState([])
   const [saving, setSaving] = useState(false)
   const [grading, setGrading] = useState(false)
-  const [currentGrade, setCurrentGrade] = useState(null)
+  const [judgeResults, setJudgeResults] = useState(null)
 
-  // Use the official ElevenLabs Scribe hook
   const scribe = useScribe({
     onConnect: () => {
       console.log('Scribe connected!')
       setError(null)
-      setCurrentGrade(null)
+      setJudgeResults(null)
     },
     onDisconnect: () => {
       console.log('Scribe disconnected')
@@ -28,9 +27,6 @@ function App() {
     onError: (err) => {
       console.error('Scribe error:', err)
       setError(err.message || 'Connection error')
-    },
-    onTranscript: (data) => {
-      console.log('onTranscript:', data)
     },
     onPartialTranscript: (data) => {
       setPartialTranscript(data.text || data || '')
@@ -45,33 +41,25 @@ function App() {
     },
   })
 
-  // Sync with scribe's built-in transcript
   useEffect(() => {
     if (scribe.partialTranscript) {
       setPartialTranscript(scribe.partialTranscript)
     }
   }, [scribe.partialTranscript])
 
-  // Get token from ElevenLabs API
   const getToken = async () => {
     const response = await fetch('https://api.elevenlabs.io/v1/single-use-token/realtime_scribe', {
       method: 'POST',
-      headers: {
-        'xi-api-key': API_KEY,
-      },
+      headers: { 'xi-api-key': API_KEY },
     })
-    
-    if (!response.ok) {
-      throw new Error('Failed to get token')
-    }
-    
+    if (!response.ok) throw new Error('Failed to get token')
     const data = await response.json()
     return data.token
   }
 
   const startRecording = async () => {
     if (!API_KEY) {
-      setError('Missing VITE_ELEVEN_LABS_API_KEY')
+      setError('Missing API key')
       return
     }
 
@@ -79,10 +67,9 @@ function App() {
       setError(null)
       setTranscript('')
       setPartialTranscript('')
-      setCurrentGrade(null)
+      setJudgeResults(null)
       
       const token = await getToken()
-      
       await scribe.connect({
         token,
         modelId: 'scribe_v2_realtime',
@@ -100,7 +87,6 @@ function App() {
   }
 
   const stopRecording = async () => {
-    console.log('Stopping recording...')
     scribe.disconnect()
     
     const finalText = (transcript + ' ' + partialTranscript).trim()
@@ -115,37 +101,38 @@ function App() {
       try {
         const saved = await saveTranscript(finalText)
         savedRecord = saved[0]
-        console.log('Saved to Supabase:', savedRecord)
       } catch (err) {
         console.error('Failed to save:', err)
-        setError('Failed to save transcript')
+        setError('Failed to save')
         setSaving(false)
         return
       }
       setSaving(false)
       
-      // Grade with K2
+      // Get judge panel verdicts
       setGrading(true)
       try {
-        const grade = await gradeRapBattle(finalText)
-        console.log('Grade received:', grade)
-        setCurrentGrade(grade)
+        const results = await getJudgePanel(finalText)
+        console.log('Judge panel results:', results)
+        setJudgeResults(results)
         
         // Update Supabase with grade
         if (savedRecord?.id) {
-          await updateTranscriptGrade(
-            savedRecord.id, 
-            `${grade.grade} (${grade.score}/10)`,
-            `${grade.verdict} ${grade.feedback}`
-          )
-          savedRecord.grade = `${grade.grade} (${grade.score}/10)`
-          savedRecord.feedback = `${grade.verdict} ${grade.feedback}`
+          const gradeStr = `${results.gradeLetter} (${results.avgScore}/10)`
+          const feedback = results.judges
+            .filter(j => j.success)
+            .map(j => `${j.emoji} ${j.name}: ${j.comment}`)
+            .join(' | ')
+          
+          await updateTranscriptGrade(savedRecord.id, gradeStr, feedback)
+          savedRecord.grade = gradeStr
+          savedRecord.feedback = feedback
         }
         
         setSavedTranscripts(prev => [savedRecord, ...prev])
       } catch (err) {
         console.error('Failed to grade:', err)
-        setError('Failed to grade performance')
+        setError('Judges unavailable')
         setSavedTranscripts(prev => [savedRecord, ...prev])
       } finally {
         setGrading(false)
@@ -156,7 +143,7 @@ function App() {
   const clearTranscript = () => {
     setTranscript('')
     setPartialTranscript('')
-    setCurrentGrade(null)
+    setJudgeResults(null)
   }
 
   const copyToClipboard = () => {
@@ -178,10 +165,10 @@ function App() {
       <header className="header">
         <h1 className="title">
           <span className="title-icon">🎤</span>
-          Rap Battle Judge
+          Rap Battle Arena
         </h1>
         <span className="status-badge">
-          {grading ? '🤔 judging...' : saving ? '💾 saving...' : scribe.status}
+          {grading ? '⚖️ judging' : saving ? '💾' : scribe.status}
         </span>
       </header>
 
@@ -209,9 +196,9 @@ function App() {
           </button>
           <p className="status-text">
             {isConnecting && '🔌 Connecting...'}
-            {isRecording && '🔥 Spit your bars! (click to stop)'}
+            {isRecording && '🔥 Spit your bars!'}
             {saving && '💾 Saving...'}
-            {grading && '🎯 AI Judge is grading...'}
+            {grading && '⚖️ Panel is judging...'}
             {!isBusy && !isRecording && '👆 Drop your verse'}
           </p>
         </div>
@@ -227,12 +214,8 @@ function App() {
           <div className="transcript-header">
             <h2>🎙️ Your Bars</h2>
             <div className="transcript-actions">
-              <button onClick={copyToClipboard} className="action-btn" title="Copy" disabled={!displayTranscript}>
-                📋
-              </button>
-              <button onClick={clearTranscript} className="action-btn" title="Clear" disabled={!displayTranscript && !displayPartial}>
-                🗑️
-              </button>
+              <button onClick={copyToClipboard} className="action-btn" title="Copy" disabled={!displayTranscript}>📋</button>
+              <button onClick={clearTranscript} className="action-btn" title="Clear" disabled={!displayTranscript}>🗑️</button>
             </div>
           </div>
           <div className="transcript-content">
@@ -245,33 +228,47 @@ function App() {
               </>
             ) : (
               <span className="placeholder-text">
-                {isRecording 
-                  ? "🎤 The mic is hot... drop your bars!"
-                  : "Your verse will appear here as you spit..."}
+                {isRecording ? "🎤 The mic is hot..." : "Your verse appears here..."}
               </span>
             )}
           </div>
         </div>
 
-        {/* Grade Display */}
-        {currentGrade && (
-          <div className="grade-container">
-            <div className="grade-header">
-              <div className="grade-score">
-                <span className="grade-letter">{currentGrade.grade}</span>
-                <span className="grade-number">{currentGrade.score}/10</span>
+        {/* Judge Panel Results */}
+        {judgeResults && (
+          <div className="judge-panel">
+            <div className="panel-header">
+              <div className="final-score">
+                <span className="score-letter">{judgeResults.gradeLetter}</span>
+                <span className="score-number">{judgeResults.avgScore}/10</span>
               </div>
-              <h3>Judge's Verdict</h3>
+              <h3>Judge Panel Verdict</h3>
             </div>
-            <p className="grade-verdict">{currentGrade.verdict}</p>
-            <p className="grade-feedback">{currentGrade.feedback}</p>
+            
+            <div className="judges-grid">
+              {judgeResults.judges.map((judge) => (
+                <div key={judge.id} className={`judge-card ${judge.success ? '' : 'unavailable'}`}>
+                  <div className="judge-header">
+                    <span className="judge-emoji">{judge.emoji}</span>
+                    <span className="judge-name">{judge.name}</span>
+                    {judge.success && (
+                      <span className="judge-score">{judge.score}/10</span>
+                    )}
+                  </div>
+                  <p className="judge-comment">{judge.comment}</p>
+                  <span className="judge-model">{judge.model.split('/')[1]}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {grading && (
-          <div className="grade-container grading">
-            <div className="grading-spinner">🎯</div>
-            <p>The AI judge is analyzing your performance...</p>
+          <div className="judge-panel grading">
+            <div className="grading-animation">
+              <span>🎤</span><span>🤖</span><span>👑</span>
+            </div>
+            <p>The judge panel is deliberating...</p>
           </div>
         )}
 
@@ -295,31 +292,31 @@ function App() {
 
         <div className="info-cards">
           <div className="info-card">
-            <div className="info-icon">⚡</div>
+            <div className="info-icon">🎤</div>
             <div className="info-content">
-              <h4>Real-time</h4>
-              <p>Live transcription</p>
+              <h4>OG Mike</h4>
+              <p>DeepSeek V3</p>
             </div>
           </div>
           <div className="info-card">
             <div className="info-icon">🤖</div>
             <div className="info-content">
-              <h4>AI Judge</h4>
-              <p>K2 Think grades your bars</p>
+              <h4>DJ Neural</h4>
+              <p>Llama 3.3 70B</p>
             </div>
           </div>
           <div className="info-card">
-            <div className="info-icon">💾</div>
+            <div className="info-icon">👑</div>
             <div className="info-content">
-              <h4>History</h4>
-              <p>All battles saved</p>
+              <h4>Queen Bars</h4>
+              <p>Qwen 2.5 72B</p>
             </div>
           </div>
         </div>
       </main>
 
       <footer className="footer">
-        <p>Powered by ElevenLabs • K2 Think AI • Supabase</p>
+        <p>ElevenLabs • Featherless AI • Supabase</p>
       </footer>
     </div>
   )

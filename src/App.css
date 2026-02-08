@@ -456,87 +456,145 @@ body {
   font-style: italic;
 }
 
-/* Grade Display */
-.grade-container {
+/* Judge Panel */
+.judge-panel {
   width: 100%;
   max-width: 800px;
-  background: linear-gradient(135deg, rgba(0, 212, 170, 0.1), rgba(0, 100, 200, 0.1));
+  background: linear-gradient(135deg, rgba(0, 212, 170, 0.08), rgba(100, 0, 200, 0.08));
   border: 2px solid var(--accent-primary);
   border-radius: 16px;
   padding: 1.5rem;
-  text-align: center;
-  animation: gradeReveal 0.5s ease;
+  animation: panelReveal 0.5s ease;
 }
 
-@keyframes gradeReveal {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+@keyframes panelReveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.grade-container.grading {
+.judge-panel.grading {
   border-color: var(--text-muted);
   background: var(--glass);
+  text-align: center;
+  padding: 2rem;
 }
 
-.grading-spinner {
-  font-size: 3rem;
-  animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.grade-header {
+.grading-animation {
+  font-size: 2.5rem;
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 1.5rem;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
 
-.grade-score {
+.grading-animation span {
+  animation: bounce 0.6s ease infinite;
+}
+
+.grading-animation span:nth-child(2) { animation-delay: 0.2s; }
+.grading-animation span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.final-score {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 80px;
 }
 
-.grade-letter {
-  font-size: 3rem;
+.score-letter {
+  font-size: 2.5rem;
   font-weight: 700;
   color: var(--accent-primary);
   line-height: 1;
 }
 
-.grade-number {
-  font-size: 1rem;
+.score-number {
+  font-size: 0.9rem;
   color: var(--text-secondary);
   font-weight: 600;
 }
 
-.grade-header h3 {
-  font-size: 1.5rem;
+.panel-header h3 {
+  font-size: 1.25rem;
   color: var(--text-primary);
 }
 
-.grade-verdict {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.judges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.judge-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.judge-card:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.judge-card.unavailable {
+  opacity: 0.5;
+}
+
+.judge-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
-.grade-feedback {
-  font-size: 1rem;
+.judge-emoji {
+  font-size: 1.5rem;
+}
+
+.judge-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.judge-score {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.judge-comment {
   color: var(--text-secondary);
-  line-height: 1.6;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+  font-style: italic;
+}
+
+.judge-model {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .saved-section {
