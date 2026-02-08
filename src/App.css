@@ -456,6 +456,89 @@ body {
   font-style: italic;
 }
 
+/* Grade Display */
+.grade-container {
+  width: 100%;
+  max-width: 800px;
+  background: linear-gradient(135deg, rgba(0, 212, 170, 0.1), rgba(0, 100, 200, 0.1));
+  border: 2px solid var(--accent-primary);
+  border-radius: 16px;
+  padding: 1.5rem;
+  text-align: center;
+  animation: gradeReveal 0.5s ease;
+}
+
+@keyframes gradeReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.grade-container.grading {
+  border-color: var(--text-muted);
+  background: var(--glass);
+}
+
+.grading-spinner {
+  font-size: 3rem;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.grade-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.grade-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.grade-letter {
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  line-height: 1;
+}
+
+.grade-number {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.grade-header h3 {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.grade-verdict {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.grade-feedback {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .saved-section {
   width: 100%;
   max-width: 800px;
@@ -479,28 +562,45 @@ body {
 
 .saved-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.875rem 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
   background: var(--glass);
   border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 0.875rem;
 }
 
+.saved-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.saved-grade {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
 .saved-text {
   color: var(--text-primary);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.saved-feedback {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.4;
 }
 
 .saved-time {
   color: var(--text-muted);
   font-size: 0.75rem;
-  flex-shrink: 0;
 }
 
 .info-cards {

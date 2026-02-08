@@ -26,6 +26,26 @@ export async function saveTranscript(text) {
   return data
 }
 
+// Update transcript with grade
+export async function updateTranscriptGrade(id, grade, feedback) {
+  const { data, error } = await supabase
+    .from('transcripts')
+    .update({ 
+      grade,
+      feedback,
+    })
+    .eq('id', id)
+    .select()
+
+  if (error) {
+    console.error('Error updating grade:', error)
+    throw error
+  }
+
+  console.log('Grade updated:', data)
+  return data
+}
+
 // Get all transcripts
 export async function getTranscripts() {
   const { data, error } = await supabase
@@ -40,4 +60,3 @@ export async function getTranscripts() {
 
   return data
 }
-

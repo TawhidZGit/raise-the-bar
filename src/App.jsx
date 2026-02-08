@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useScribe } from '@elevenlabs/react'
-import { saveTranscript } from './supabase'
+import { saveTranscript, updateTranscriptGrade } from './supabase'
+import { gradeRapBattle } from './k2'
 import './App.css'
 
 const API_KEY = import.meta.env.VITE_ELEVEN_LABS_API_KEY
@@ -11,12 +12,15 @@ function App() {
   const [error, setError] = useState(null)
   const [savedTranscripts, setSavedTranscripts] = useState([])
   const [saving, setSaving] = useState(false)
+  const [grading, setGrading] = useState(false)
+  const [currentGrade, setCurrentGrade] = useState(null)
 
   // Use the official ElevenLabs Scribe hook
   const scribe = useScribe({
     onConnect: () => {
       console.log('Scribe connected!')
       setError(null)
+      setCurrentGrade(null)
     },
     onDisconnect: () => {
       console.log('Scribe disconnected')
@@ -29,11 +33,9 @@ function App() {
       console.log('onTranscript:', data)
     },
     onPartialTranscript: (data) => {
-      console.log('onPartialTranscript:', data)
       setPartialTranscript(data.text || data || '')
     },
     onCommittedTranscript: (data) => {
-      console.log('onCommittedTranscript:', data)
       const text = data.text || data || ''
       setTranscript(prev => {
         const newText = prev ? prev + ' ' + text : text
@@ -75,13 +77,11 @@ function App() {
 
     try {
       setError(null)
-      // Clear previous transcript when starting new recording
       setTranscript('')
       setPartialTranscript('')
+      setCurrentGrade(null)
       
-      console.log('Getting token...')
       const token = await getToken()
-      console.log('Got token, connecting...')
       
       await scribe.connect({
         token,
@@ -103,24 +103,52 @@ function App() {
     console.log('Stopping recording...')
     scribe.disconnect()
     
-    // Get the final transcript (combine partial if any)
     const finalText = (transcript + ' ' + partialTranscript).trim()
     setPartialTranscript('')
     
-    if (finalText) {
+    if (finalText && finalText.length > 10) {
       setTranscript(finalText)
       
       // Save to Supabase
       setSaving(true)
+      let savedRecord = null
       try {
         const saved = await saveTranscript(finalText)
-        console.log('Saved to Supabase:', saved)
-        setSavedTranscripts(prev => [saved[0], ...prev])
+        savedRecord = saved[0]
+        console.log('Saved to Supabase:', savedRecord)
       } catch (err) {
         console.error('Failed to save:', err)
-        setError('Failed to save transcript: ' + err.message)
-      } finally {
+        setError('Failed to save transcript')
         setSaving(false)
+        return
+      }
+      setSaving(false)
+      
+      // Grade with K2
+      setGrading(true)
+      try {
+        const grade = await gradeRapBattle(finalText)
+        console.log('Grade received:', grade)
+        setCurrentGrade(grade)
+        
+        // Update Supabase with grade
+        if (savedRecord?.id) {
+          await updateTranscriptGrade(
+            savedRecord.id, 
+            `${grade.grade} (${grade.score}/10)`,
+            `${grade.verdict} ${grade.feedback}`
+          )
+          savedRecord.grade = `${grade.grade} (${grade.score}/10)`
+          savedRecord.feedback = `${grade.verdict} ${grade.feedback}`
+        }
+        
+        setSavedTranscripts(prev => [savedRecord, ...prev])
+      } catch (err) {
+        console.error('Failed to grade:', err)
+        setError('Failed to grade performance')
+        setSavedTranscripts(prev => [savedRecord, ...prev])
+      } finally {
+        setGrading(false)
       }
     }
   }
@@ -128,6 +156,7 @@ function App() {
   const clearTranscript = () => {
     setTranscript('')
     setPartialTranscript('')
+    setCurrentGrade(null)
   }
 
   const copyToClipboard = () => {
@@ -136,6 +165,7 @@ function App() {
 
   const isRecording = scribe.status === 'connected' || scribe.status === 'transcribing'
   const isConnecting = scribe.status === 'connecting'
+  const isBusy = isConnecting || saving || grading
 
   const displayTranscript = transcript || ''
   const displayPartial = partialTranscript || scribe.partialTranscript || ''
@@ -147,11 +177,11 @@ function App() {
       
       <header className="header">
         <h1 className="title">
-          <span className="title-icon">◉</span>
-          Voice Scribe
+          <span className="title-icon">🎤</span>
+          Rap Battle Judge
         </h1>
         <span className="status-badge">
-          {saving ? 'saving...' : scribe.status}
+          {grading ? '🤔 judging...' : saving ? '💾 saving...' : scribe.status}
         </span>
       </header>
 
@@ -160,7 +190,7 @@ function App() {
           <button 
             className={`mic-button ${isRecording ? 'recording' : ''} ${isConnecting ? 'connecting' : ''}`}
             onClick={isRecording ? stopRecording : startRecording}
-            disabled={isConnecting || saving}
+            disabled={isBusy && !isRecording}
           >
             <div className="mic-pulse"></div>
             <div className="mic-pulse delay-1"></div>
@@ -178,40 +208,30 @@ function App() {
             </svg>
           </button>
           <p className="status-text">
-            {isConnecting && 'Connecting...'}
-            {isRecording && 'Listening... (click to stop & save)'}
-            {saving && 'Saving to database...'}
-            {!isConnecting && !isRecording && !saving && 'Click to start'}
+            {isConnecting && '🔌 Connecting...'}
+            {isRecording && '🔥 Spit your bars! (click to stop)'}
+            {saving && '💾 Saving...'}
+            {grading && '🎯 AI Judge is grading...'}
+            {!isBusy && !isRecording && '👆 Drop your verse'}
           </p>
         </div>
 
         {error && (
           <div className="error-banner">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>{error}</span>
+            <span>⚠️ {error}</span>
             <button onClick={() => setError(null)} className="error-dismiss">×</button>
           </div>
         )}
 
         <div className="transcript-container">
           <div className="transcript-header">
-            <h2>Transcript</h2>
+            <h2>🎙️ Your Bars</h2>
             <div className="transcript-actions">
-              <button onClick={copyToClipboard} className="action-btn" title="Copy to clipboard" disabled={!displayTranscript}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
+              <button onClick={copyToClipboard} className="action-btn" title="Copy" disabled={!displayTranscript}>
+                📋
               </button>
-              <button onClick={clearTranscript} className="action-btn" title="Clear transcript" disabled={!displayTranscript && !displayPartial}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3,6 5,6 21,6"/>
-                  <path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6m3,0V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2V6"/>
-                </svg>
+              <button onClick={clearTranscript} className="action-btn" title="Clear" disabled={!displayTranscript && !displayPartial}>
+                🗑️
               </button>
             </div>
           </div>
@@ -226,21 +246,47 @@ function App() {
             ) : (
               <span className="placeholder-text">
                 {isRecording 
-                  ? "Speak now... your words will appear here"
-                  : "Your transcription will appear here in real-time as you speak..."}
+                  ? "🎤 The mic is hot... drop your bars!"
+                  : "Your verse will appear here as you spit..."}
               </span>
             )}
           </div>
         </div>
 
+        {/* Grade Display */}
+        {currentGrade && (
+          <div className="grade-container">
+            <div className="grade-header">
+              <div className="grade-score">
+                <span className="grade-letter">{currentGrade.grade}</span>
+                <span className="grade-number">{currentGrade.score}/10</span>
+              </div>
+              <h3>Judge's Verdict</h3>
+            </div>
+            <p className="grade-verdict">{currentGrade.verdict}</p>
+            <p className="grade-feedback">{currentGrade.feedback}</p>
+          </div>
+        )}
+
+        {grading && (
+          <div className="grade-container grading">
+            <div className="grading-spinner">🎯</div>
+            <p>The AI judge is analyzing your performance...</p>
+          </div>
+        )}
+
         {savedTranscripts.length > 0 && (
           <div className="saved-section">
-            <h3>Recently Saved</h3>
+            <h3>📜 Battle History</h3>
             <div className="saved-list">
-              {savedTranscripts.slice(0, 3).map((t, i) => (
+              {savedTranscripts.slice(0, 5).map((t, i) => (
                 <div key={t.id || i} className="saved-item">
-                  <span className="saved-text">{t.text.substring(0, 100)}{t.text.length > 100 ? '...' : ''}</span>
-                  <span className="saved-time">{new Date(t.created_at).toLocaleTimeString()}</span>
+                  <div className="saved-item-header">
+                    {t.grade && <span className="saved-grade">{t.grade}</span>}
+                    <span className="saved-time">{new Date(t.created_at).toLocaleTimeString()}</span>
+                  </div>
+                  <span className="saved-text">{t.text.substring(0, 80)}{t.text.length > 80 ? '...' : ''}</span>
+                  {t.feedback && <span className="saved-feedback">{t.feedback}</span>}
                 </div>
               ))}
             </div>
@@ -251,29 +297,29 @@ function App() {
           <div className="info-card">
             <div className="info-icon">⚡</div>
             <div className="info-content">
-              <h4>~150ms Latency</h4>
-              <p>Ultra-low latency real-time transcription</p>
+              <h4>Real-time</h4>
+              <p>Live transcription</p>
             </div>
           </div>
           <div className="info-card">
-            <div className="info-icon">🌍</div>
+            <div className="info-icon">🤖</div>
             <div className="info-content">
-              <h4>90+ Languages</h4>
-              <p>Powered by Scribe v2 Realtime</p>
+              <h4>AI Judge</h4>
+              <p>K2 Think grades your bars</p>
             </div>
           </div>
           <div className="info-card">
             <div className="info-icon">💾</div>
             <div className="info-content">
-              <h4>Auto-Save</h4>
-              <p>Transcripts saved to Supabase</p>
+              <h4>History</h4>
+              <p>All battles saved</p>
             </div>
           </div>
         </div>
       </main>
 
       <footer className="footer">
-        <p>Powered by <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer">ElevenLabs</a> & <a href="https://supabase.com" target="_blank" rel="noopener noreferrer">Supabase</a></p>
+        <p>Powered by ElevenLabs • K2 Think AI • Supabase</p>
       </footer>
     </div>
   )
